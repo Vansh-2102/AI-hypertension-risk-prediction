@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: predictive-pulse-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: Vansh@2102
+      MYSQL_DATABASE: predictive_pulse
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - predictive-pulse-network
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: predictive-pulse-ml
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - PORT=8000
+    networks:
+      - predictive-pulse-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: predictive-pulse-backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/predictive_pulse?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC&autoReconnect=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Vansh@2102
+      - ML_SERVICE_URL=http://ml-service:8000
+    networks:
+      - predictive-pulse-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: predictive-pulse-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost:8080/api
+    networks:
+      - predictive-pulse-network
+    restart: unless-stopped
+
+networks:
+  predictive-pulse-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
